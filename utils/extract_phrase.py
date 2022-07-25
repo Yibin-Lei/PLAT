@@ -1,7 +1,7 @@
-import csv
+# from spacy.lang.en import English
+import argparse
 import re
 from string import punctuation as punc
-import argparse
 
 import nltk
 import numpy as np
@@ -10,24 +10,9 @@ from spacy.lang.en import English
 from stanfordcorenlp import StanfordCoreNLP
 from tqdm import tqdm
 
-
-def read_corpus(path, text_label_pair=False):
-    with open(path, encoding='utf8') as f:
-        examples = list(csv.reader(f, delimiter='\t', quotechar=None))[1:]
-        second_text = False if examples[1][2] == '' else True
-        for i in range(len(examples)):
-            examples[i][0] = int(examples[i][0])
-            if not second_text:
-                examples[i][2] = None
-    # label, text1, text2
-    if text_label_pair:
-        tmp = list(zip(*examples))
-        return tmp[0], list(zip(tmp[1], tmp[2]))
-    else:
-        return examples
+from utils.dataloader import read_corpus
 
 
-# The function to extract phrases from a obtained sentence tree
 def extract_phrase(phrases, tree_str, label, i, stop_words_set, word_list):
     trees = Tree.fromstring(tree_str)
     for tree in trees:
@@ -53,41 +38,34 @@ def extract_phrase(phrases, tree_str, label, i, stop_words_set, word_list):
 
     return phrases
 
-
-# The core function to generate parsed phrases given a series of sentences
 def extract_phrases(parser, local_sentences, stop_words_set):
     phrases = []
     word_lists = []
     for i, sent in enumerate(local_sentences):
-        tree_str = parser.parse(sent)
+            tree_str = parser.parse(sent)
+            tree_str = add_indices_to_terminals(tree_str)
+            word_list = [leave.split(",/a")[0] for leave in Tree.fromstring(tree_str).leaves()]
+            for word_i, word in enumerate(word_list):
+                if word == "-LRB-":
+                    word_list[word_i] = "("
+                if word == "-RRB-":
+                    word_list[word_i] = ")"
 
-        # tree_str = parser.predict(sent)["trees"]
-        tree_str = add_indices_to_terminals(tree_str)
-        word_list = [leave.split(",/a")[0] for leave in Tree.fromstring(tree_str).leaves()]
-        for word_i, word in enumerate(word_list):
-            if word == "-LRB-":
-                word_list[word_i] = "("
-            if word == "-RRB-":
-                word_list[word_i] = ")"
-
-        word_lists.append(word_list)
-        local_sentences[i] = " ".join(word_list)
-        phrases = extract_phrase(phrases, tree_str, "P", i, stop_words_set, word_list)
-        # replace special tokens "-LRB" and "-RRB"
-        local_sentences[i] = local_sentences[i].replace("-LRB-", "(")
-        local_sentences[i] = local_sentences[i].replace("-RRB-", ")")
-        for i, phrase in enumerate(phrases):
-            phrases[i][0] = phrase[0].replace("-LRB-", "(")
-            phrases[i][0] = phrase[0].replace("-RRB-", ")")
+            word_lists.append(word_list)
+            local_sentences[i] = " ".join(word_list)
+            phrases = extract_phrase(phrases, tree_str, "P", i, stop_words_set, word_list)
+            # replace special tokens "-LRB" and "-RRB"
+            local_sentences[i] = local_sentences[i].replace("-LRB-", "(")
+            local_sentences[i] = local_sentences[i].replace("-RRB-", ")")
+            for i, phrase in enumerate(phrases):
+                phrases[i][0] = phrase[0].replace("-LRB-", "(")
+                phrases[i][0] = phrase[0].replace("-RRB-", ")")
     return phrases, local_sentences, word_lists
-
 
 def add_indices_to_terminals(tree):
     tree = Tree.fromstring(tree)
     for idx, _ in enumerate(tree.leaves()):
         tree_location = tree.leaf_treeposition(idx)
-        # non_terminal = tree[tree_location[:-1]]
-        # non_terminal[0] = non_terminal[0] + ",/a" + str(idx)
         non_terminal = tree[tree_location]
         tree[tree_location] = non_terminal + ",/a" + str(idx)
     return str(tree)
@@ -100,12 +78,10 @@ def convert2local(sentencizer, text):
     sents = sentencizer(text).sents
     local_sentences = []
     for sent in sents:
-        local_sentence = sent.text
-        local_sentences.append(local_sentence)
+            local_sentence = sent.text
+            local_sentences.append(local_sentence)
     return local_sentences
 
-
-# The function to process a string to replace some specific symbols
 def process_string(string):
     string = re.sub("( )(\'[(m)(d)(t)(ll)(re)(ve)(s)])", r"\2", string)
     string = re.sub("(\d+)( )([,\.])( )(\d+)", r"\1\3\5", string)
@@ -121,8 +97,48 @@ def process_string(string):
     string = re.sub("(\")( )(\S+)( )(\")", r"\1\3\5", string)
     string = re.sub("(\w+) (-+) (\w+)", r"\1\2\3", string)
     string = re.sub("(\w+) (/+) (\w+)", r"\1\2\3", string)
-    # string = re.sub(" ' ", "'", string)
     return string
+
+
+def examples2phrases(examples, parser_path, dataset):
+    # prepare parser and sentencizer
+    parser = StanfordCoreNLP(parser_path)
+    sentencizer = English()
+    sentencizer.add_pipe("sentencizer")
+
+    all_phrases = []
+    all_sentences = []
+    all_word_lists = []
+
+    for example in tqdm(examples):
+        if dataset in ["ag", "yelp", "mnli"]:
+            text = example[1]
+        elif dataset == "qnli":
+            text = example[2]
+        # romove the sepcial token "%" as it will lead to error of consitency parsing
+        text = text.replace("%", "")
+        text = text.replace(" '", "'")
+        text = text.replace("$", "")
+        text = process_string(text)
+
+        # split the whole example into multiple single sentences
+        sents = sentencizer(text).sents
+        local_sentences = []
+        for sent in sents:
+            local_sentence = sent.text
+            local_sentences.append(local_sentence)
+
+        stop_words_set = set(nltk.corpus.stopwords.words('english'))
+
+        # phrases, local_sentences, word_lists = extract_phrases(parser, local_sentences, stop_words_set)
+        phrases, local_sentences, word_lists = extract_phrases(parser, local_sentences, stop_words_set)
+
+        all_phrases.append(phrases)
+        all_sentences.append(local_sentences)
+        all_word_lists.append(word_lists)
+
+    return all_phrases, all_sentences, all_word_lists
+
 
 
 if __name__ == "__main__":

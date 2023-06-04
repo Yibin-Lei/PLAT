@@ -52,7 +52,7 @@ Some of our code are built upon [CLARE](https://github.com/cookielee77/CLARE).
 
 If you find our work is useful in your research, please consider citing:
 ```
-@InProceedings{li2021contextualized,
+@InProceedings{lei2022plat,
   title={Phrase-level Textual Adversarial Attack with Label Preservation},
   author={Lei, Yibin and Cao, Yu and Li, Dianqi and Zhou, Tianyi and Fang, Meng and Pechenizkiy, Mykola},
   booktitle={Findings of the Association for Computational Linguistics: NAACL 2022},

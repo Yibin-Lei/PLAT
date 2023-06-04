@@ -1,7 +1,6 @@
 # Phrase-level Textual Adversarial Attack with Label Preservation
 ### Introduction
-This is the official code for NAACL-HLT 2022 Findings paper "Phrase-level Textual Adversarial Attack with Label Preservation". 
-Code is still in process.
+This is the official code for NAACL-HLT 2022 Findings paper "Phrase-level Textual Adversarial Attack with Label Preservation".
 
 ### Preparation
 
